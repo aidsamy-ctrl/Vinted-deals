@@ -1,0 +1,39 @@
+domain: www.vinted.fr
+request_delay: 6
+jitter: 3
+per_page: 96
+db_path: vinted_bot.sqlite3
+state_dir: .state
+log_level: INFO
+
+notify:
+  telegram_bot_token: ""   # rempli automatiquement par le workflow (Secrets)
+  telegram_chat_id: ""
+
+watches:
+  - name: "MacBook Air M1"
+    search_text: "macbook air m1"
+    reference_price: 520          # prix "normal" constaté → alerte sous 65 %
+    deal_ratio: 0.65
+    max_price: 400
+    conditions: [neuf_avec_etiquette, neuf_sans_etiquette, tres_bon_etat, bon_etat]
+    exclude_keywords: ["2017", "2018", "intel", "casse"]
+    interval: 600
+    min_score: 55
+    verify_detail: true
+    max_detail_checks: 4
+    exclude_description_keywords: ["trou", "tache", "defaut", "casse", "sans boite"]
+    min_seller_rating: 4.0
+    min_seller_reviews: 2
+    skip_reserved: true
+
+  - name: "Jordan 1 taille 42"
+    search_text: "jordan 1"
+    reference_price: 180
+    deal_ratio: 0.6
+    max_price: 130
+    conditions: [neuf_sans_etiquette, tres_bon_etat, bon_etat]
+    exclude_keywords: ["enfant", "mini", "ps", "td"]
+    interval: 600
+    min_score: 50
+    verify_detail: false
