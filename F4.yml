@@ -1,0 +1,80 @@
+name: vinted-watch
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"        # toutes les 10 min (GitHub peut retarder de 5-15 min)
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Que faire ?"
+        type: choice
+        default: scan
+        options:
+          - scan      # scanne et alerte
+          - seed      # amorçage : marque l'existant comme vu, sans alerte
+          - test      # envoie juste un message Telegram de test
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vinted
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dépendances
+        run: pip install -r requirements.txt
+
+      - name: Injecter le token Telegram
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, yaml
+          p = pathlib.Path("config.yaml")
+          cfg = yaml.safe_load(p.read_text(encoding="utf-8"))
+          n = cfg.setdefault("notify", {})
+          n["telegram_bot_token"] = os.environ.get("TG_TOKEN", "")
+          n["telegram_chat_id"]  = os.environ.get("TG_CHAT", "")
+          p.write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8")
+          print("token:", "ok" if n["telegram_bot_token"] else "MANQUANT",
+                "| chat_id:", n["telegram_chat_id"] or "MANQUANT")
+          PY
+
+      - name: Exécution
+        run: |
+          case "${{ inputs.action }}" in
+            test) python vinted_bot.py --test-notify ;;
+            seed) python vinted_bot.py --seed ;;
+            *)    python vinted_bot.py --once ;;
+          esac
+
+      - name: Sauvegarder l'état (anti-doublons)
+        if: always()
+        run: |
+          set -e
+          sudo apt-get -qq update >/dev/null && sudo apt-get -qq install -y sqlite3 >/dev/null
+          if [ -f vinted_bot.sqlite3 ]; then
+            sqlite3 vinted_bot.sqlite3 "PRAGMA wal_checkpoint(TRUNCATE);" || true
+          fi
+          git config user.name  "vinted-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -f vinted_bot.sqlite3
+          if git diff --cached --quiet; then
+            echo "état inchangé"
+          else
+            git commit -m "state $(date -u +%FT%TZ)"
+            git push
+          fi
